@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>課題スケジューラー — パレート × マニャーナ × 予備日</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#ffffff; --ink:#1f2933; --sub:#6b7280;
+    --line:#e3e8ee; --accent:#2f6fed; --accent2:#0e7c66;
+    --warn:#d97706; --danger:#dc2626; --ok:#16a34a;
+    --core:#2f6fed; --finish:#9db4e0;
+    --shadow:0 1px 3px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6;}
+  header{background:linear-gradient(135deg,#2f6fed,#0e7c66);color:#fff;padding:20px 16px;}
+  header h1{margin:0;font-size:1.25rem;}
+  header p{margin:4px 0 0;font-size:.82rem;opacity:.92;}
+  .wrap{max-width:920px;margin:0 auto;padding:16px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:16px;margin-bottom:16px;box-shadow:var(--shadow);}
+  .card h2{margin:0 0 12px;font-size:1rem;display:flex;align-items:center;gap:8px;}
+  .card h2 .badge{font-size:.68rem;background:var(--bg);color:var(--sub);
+        border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-weight:600;}
+  label{display:block;font-size:.78rem;color:var(--sub);margin:10px 0 4px;font-weight:600;}
+  input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+        font-size:.95rem;font-family:inherit;background:#fff;}
+  input:focus,select:focus{outline:2px solid #cfe0ff;border-color:var(--accent);}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .btn{display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:8px;
+        padding:10px 16px;font-size:.92rem;font-weight:700;cursor:pointer;font-family:inherit;}
+  .btn:hover{filter:brightness(1.05)}
+  .btn.sec{background:#eef2f7;color:var(--ink);}
+  .btn.tiny{padding:4px 10px;font-size:.78rem;}
+  .btn.ghost{background:transparent;color:var(--danger);border:1px solid var(--line);}
+  .muted{color:var(--sub);font-size:.82rem;}
+  .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;}
+  .pill.vital{background:#fff1e6;color:#b45309;border:1px solid #fcd9b6;}
+  .pill.ok{background:#e7f6ec;color:#15803d;}
+  .pill.tight{background:#fff7e6;color:#b45309;}
+  .pill.danger{background:#fdecec;color:#b91c1c;}
+  .pill.done{background:#eef2f7;color:#6b7280;}
+  table{width:100%;border-collapse:collapse;font-size:.86rem;}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{color:var(--sub);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;}
+  .bar{height:8px;border-radius:999px;background:#eef2f7;overflow:hidden;display:flex;margin-top:4px;}
+  .bar .core{background:var(--core);}
+  .bar .finish{background:var(--finish);}
+  .daycard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .daycard.today{border-color:#cdb3f5;background:#faf7ff;}
+  .daycard.tomorrow{border-color:#9db4e0;background:#f5f9ff;}
+  .daycard.over{border-color:#f3b4b4;background:#fdf6f6;}
+  .dayhead{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:.9rem;}
+  .task-line{display:flex;justify-content:space-between;gap:8px;font-size:.86rem;padding:3px 0;}
+  .empty{color:var(--sub);font-size:.82rem;padding:8px 0;}
+  .grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .grid7 .d label{text-align:center;margin:0 0 2px;font-size:.7rem;}
+  .grid7 .d input{padding:6px 2px;text-align:center;font-size:.85rem;}
+  .toggle{display:flex;align-items:center;gap:8px;margin-top:10px;}
+  .toggle input{width:auto;}
+  details summary{cursor:pointer;font-weight:600;font-size:.85rem;color:var(--accent);}
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;}
+  .kpi div{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;flex:1;min-width:120px;}
+  .kpi b{display:block;font-size:1.15rem;}
+  .kpi span{font-size:.72rem;color:var(--sub);}
+  .note{font-size:.78rem;color:var(--sub);background:#f8fafc;border-left:3px solid var(--accent);
+        padding:8px 10px;border-radius:0 6px 6px 0;margin-top:8px;}
+  @media(max-width:560px){.row3{grid-template-columns:1fr 1fr}.kpi div{min-width:90px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding-bottom:0">
+    <h1>📐 課題スケジューラー</h1>
+    <p>パレートの法則 × マニャーナの法則 × 予備日 — 建築の制作課題を計画的に終わらせる</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- 設定 -->
+  <div class="card">
+    <h2>① 作業できる時間の設定 <span class="badge">最初に一度だけ</span></h2>
+    <label>曜日ごとに使える作業時間(時間)</label>
+    <div class="grid7" id="weeklyHours"></div>
+    <p class="muted" style="margin-top:6px">※ 授業や予定で変動する日は、下の「特定日の上書き」でその日だけ調整できます。</p>
+
+    <div class="row">
+      <div>
+        <label>予備日(提出日の何日前までに終わらせる)</label>
+        <input type="number" id="bufferDays" min="0" max="7" value="1">
+      </div>
+      <div>
+        <label>1日あたりの上限(無理しない最大時間)</label>
+        <input type="number" id="dailyCap" min="1" max="16" value="8" step="0.5">
+      </div>
+    </div>
+
+    <div class="toggle">
+      <input type="checkbox" id="protectToday" checked>
+      <label for="protectToday" style="margin:0">マニャーナの法則:今日は既存の予定を守る日にして、新しい作業は明日から始める</label>
+    </div>
+
+    <details style="margin-top:12px">
+      <summary>特定日の上書き(休講・バイト・遠征など)を追加</summary>
+      <div class="row" style="margin-top:8px">
+        <div><label>日付</label><input type="date" id="ovDate"></div>
+        <div><label>その日使える時間</label><input type="number" id="ovHours" min="0" max="16" step="0.5" placeholder="例: 0"></div>
+      </div>
+      <button class="btn sec tiny" style="margin-top:8px" onclick="addOverride()">この日を上書き</button>
+      <div id="ovList" style="margin-top:8px"></div>
+    </details>
+
+    <button class="btn" style="margin-top:14px" onclick="saveSettings()">設定を保存</button>
+  </div>
+
+  <!-- 課題追加 -->
+  <div class="card">
+    <h2>② 課題を追加 <span class="badge">出されたら入力</span></h2>
+    <label>課題名</label>
+    <input type="text" id="aName" placeholder="例: 住宅の平面図 / 模型制作 / レポート">
+    <div class="row3">
+      <div><label>提出日</label><input type="date" id="aDate"></div>
+      <div><label>提出時刻</label><input type="time" id="aTime" value="23:59"></div>
+      <div><label>重要度</label>
+        <select id="aImp">
+          <option value="5">5 最重要(成績を左右)</option>
+          <option value="4">4 重要</option>
+          <option value="3" selected>3 普通</option>
+          <option value="2">2 軽め</option>
+          <option value="1">1 おまけ</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>見積もり作業時間(分かれば時間で、なければ規模で)</label>
+        <input type="number" id="aHours" min="0.5" step="0.5" placeholder="例: 8">
+      </div>
+      <div>
+        <label>規模から自動見積もり(時間が分からない時)</label>
+        <select id="aScale" onchange="applyScale()">
+          <option value="">— 手入力する —</option>
+          <option value="3">小(3h):軽いレポート・スケッチ</option>
+          <option value="8">中(8h):図面1枚・小レポート</option>
+          <option value="20">大(20h):模型・設計課題</option>
+          <option value="40">特大(40h):学期の主課題</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" style="margin-top:14px" onclick="addAssignment()">課題を追加</button>
+  </div>
+
+  <!-- 明日やることリスト -->
+  <div class="card" id="tomorrowCard">
+    <h2>🌅 明日やることリスト <span class="badge">マニャーナ</span></h2>
+    <div id="tomorrowList"></div>
+  </div>
+
+  <!-- ダッシュボード -->
+  <div class="card">
+    <h2>③ 全体ダッシュボード</h2>
+    <div class="kpi" id="kpi"></div>
+    <div id="warnBox"></div>
+    <div style="overflow-x:auto;margin-top:10px">
+      <table id="assignTable">
+        <thead><tr>
+          <th>課題</th><th>実質締切</th><th>残り</th><th>🚀スタートダッシュ</th>
+          <th>核心/仕上げ</th><th>状況</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="note">
+      <b>パレートの法則(ロケットスタート):</b> 使える時間の<b>最初の2割(スタートダッシュ期間)で作業の8割</b>を片付けます。
+      残りの期間は🎨仕上げ・見直し+予備に。最初の2割で8割が終わらない課題は「前倒し不足」として早めに警告します(=危ないと早く気づける)。
+      また「⭐最重要」バッジの課題が、あなたの成果の8割を生む“重要な2割”です。
+    </div>
+  </div>
+
+  <!-- 日別スケジュール -->
+  <div class="card">
+    <h2>④ 日別スケジュール <span class="badge">実質締切から逆算</span></h2>
+    <p class="muted">締切が近い課題を優先し、序盤に作業を寄せて(前倒しで)割り付けています。🚀=核心(スタートダッシュ)、🎨=仕上げ。<span style="color:var(--danger)">赤い日</span>は予定オーバーです。</p>
+    <div id="schedule"></div>
+  </div>
+
+  <p class="muted" style="text-align:center;padding:8px 0 24px">
+    データはこの端末のブラウザにだけ保存されます。&nbsp;
+    <a href="#" onclick="exportData();return false;">バックアップ書き出し</a> /
+    <a href="#" onclick="document.getElementById('importFile').click();return false;">読み込み</a>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+  </p>
+</div>
+
+<script>
+/* ============ データ ============ */
+const DOW = ['日','月','火','水','木','金','土'];
+let state = load();
+
+function defaultState(){
+  return {
+    settings:{
+      weeklyHours:[4,2,2,2,2,2,4], // 日〜土
+      overrides:{},                // {"2026-06-12": hours}
+      bufferDays:1,
+      dailyCap:8,
+      protectToday:true
+    },
+    assignments:[] // {id,name,date,time,imp,hours,assigned,done}
+  };
+}
+function load(){
+  try{ const s=JSON.parse(localStorage.getItem('kadai-sched'));
+       if(s&&s.settings) return s; }catch(e){}
+  return defaultState();
+}
+function save(){ localStorage.setItem('kadai-sched',JSON.stringify(state)); }
+
+/* ============ 日付ユーティリティ ============ */
+function todayStr(){ const d=new Date(); return iso(d); }
+function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function parse(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function addDays(s,n){ const d=parse(s); d.setDate(d.getDate()+n); return iso(d); }
+function dow(s){ return parse(s).getDay(); }
+function diffDays(a,b){ return Math.round((parse(b)-parse(a))/86400000); }
+function fmtJP(s){ const d=parse(s); return (d.getMonth()+1)+'/'+d.getDate()+'('+DOW[d.getDay()]+')'; }
+
+/* その日に使える作業時間 */
+function capacityOf(s){
+  const ov=state.settings.overrides;
+  let h = (s in ov) ? ov[s] : state.settings.weeklyHours[dow(s)];
+  return Math.min(h, state.settings.dailyCap);
+}
+/* 実質締切 = 提出日 - 予備日 */
+function effDeadline(a){ return addDays(a.date, -state.settings.bufferDays); }
+
+/* スケジュール開始日(マニャーナ:今日を守るなら明日から) */
+function startDay(){ return state.settings.protectToday ? addDays(todayStr(),1) : todayStr(); }
+
+/* ============ スケジューラ(締切が近い順=EDF) ============ */
+function buildSchedule(){
+  const active = state.assignments.filter(a=>!a.done);
+  // 各課題の作業開始日:max(出題日の翌日 or 開始日)
+  active.forEach(a=>{
+    a._start = state.settings.protectToday ? maxStr(addDays(a.assigned,1), startDay()) : maxStr(a.assigned, startDay());
+    a._eff   = effDeadline(a);
+    a._remain= Number(a.hours)||0;
+  });
+  // 期間
+  if(active.length===0) return {days:[],alloc:{}};
+  let last=startDay();
+  active.forEach(a=>{ if(a._eff>last) last=a._eff; });
+  const days=[];
+  for(let d=startDay(); d<=last; d=addDays(d,1)) days.push(d);
+
+  const alloc={}; days.forEach(d=>alloc[d]=[]);
+  const remain={}; active.forEach(a=>remain[a.id]=Number(a.hours)||0);
+
+  for(const d of days){
+    let cap=capacityOf(d);
+    if(cap<=0) continue;
+    // この日に作業可能な課題:開始日<=d<=実質締切、残あり。締切近い順→重要度高い順
+    let elig=active.filter(a=>remain[a.id]>0.001 && d>=a._start && d<=a._eff)
+      .sort((x,y)=> x._eff<y._eff?-1 : x._eff>y._eff?1 : (y.imp-x.imp));
+    for(const a of elig){
+      if(cap<=0.001) break;
+      const give=Math.min(cap, remain[a.id]);
+      // ロケットスタート:作業の先頭8割=核心(スタートダッシュ)、後ろ2割=仕上げ
+      const total=Number(a.hours)||0;
+      const doneBefore=total-remain[a.id];
+      const phase = doneBefore < total*0.8-0.001 ? 'core' : 'finish';
+      alloc[d].push({id:a.id, name:a.name, hours:give, imp:a.imp, phase});
+      remain[a.id]-=give; cap-=give;
+    }
+  }
+  // 残り(=間に合わない分)
+  active.forEach(a=> a._short = remain[a.id]);
+  return {days,alloc,active};
+}
+function maxStr(a,b){ return a>b?a:b; }
+
+/* ロケットスタート:使える時間の最初の2割を「スタートダッシュ期間」とし、8割を終える目標 */
+function dashInfo(a){
+  const total=Number(a.hours)||0;
+  let windowH=0; const wdays=[];
+  for(let d=a._start; d<=a._eff; d=addDays(d,1)){ const c=capacityOf(d); if(c>0){ windowH+=c; wdays.push([d,c]); } }
+  let acc=0, dashDeadline=a._start, dashCap=0;
+  const budget=windowH*0.2;
+  for(const [d,c] of wdays){ acc+=c; dashDeadline=d; dashCap+=c; if(acc>=budget-0.001) break; }
+  if(wdays.length===0){ dashDeadline=a._eff; }
+  return { windowH, dashDeadline, dashCap, dashTarget: total*0.8 };
+}
+
+/* ============ パレート:課題どうしの“重要な2割” ============ */
+function markVital(active){
+  // 重要度×見積もり時間 の大きい順に並べ、累積が全体の8割に達するまでを vital
+  const scored=active.map(a=>({a,w:(Number(a.imp)||1)*(Number(a.hours)||1)}))
+    .sort((x,y)=>y.w-x.w);
+  const total=scored.reduce((s,o)=>s+o.w,0)||1;
+  let cum=0; const vital=new Set();
+  for(const o of scored){ vital.add(o.a.id); cum+=o.w; if(cum>=total*0.8) break; }
+  // ただし重要度5は常にvital
+  active.forEach(a=>{ if(Number(a.imp)>=5) vital.add(a.id); });
+  return vital;
+}
+
+/* ============ 描画 ============ */
+function render(){
+  renderSettings();
+  renderOverrides();
+  const sched=buildSchedule();
+  // ロケットスタート(前倒し)状況を各課題に付与
+  (sched.active||[]).forEach(a=>{
+    const di=dashInfo(a); a._dash=di;
+    let done=0;
+    for(const d of (sched.days||[])){ if(d>di.dashDeadline) break; (sched.alloc[d]||[]).forEach(o=>{ if(o.id===a.id) done+=o.hours; }); }
+    a._doneByDash=done;
+    a._dashFeasible = di.dashCap >= di.dashTarget-0.01;          // 最初の2割で8割を終える余地があるか
+    a._dashOK = done >= Math.min(di.dashTarget, di.dashCap)-0.05; // 計画上そこまで前倒しできているか
+  });
+  const active=(sched.active||[]).slice().sort((x,y)=> x._eff<y._eff?-1:x._eff>y._eff?1:(y.imp-x.imp));
+  const vital=markVital(active);
+  renderKPI(active,sched);
+  renderTable(active,vital);
+  renderSchedule(sched,vital);
+  renderTomorrow(sched,vital);
+}
+
+function renderSettings(){
+  const box=document.getElementById('weeklyHours');
+  box.innerHTML='';
+  for(let i=0;i<7;i++){
+    const div=document.createElement('div'); div.className='d';
+    div.innerHTML=`<label>${DOW[i]}</label><input type="number" min="0" max="16" step="0.5" value="${state.settings.weeklyHours[i]}" data-dow="${i}">`;
+    box.appendChild(div);
+  }
+  document.getElementById('bufferDays').value=state.settings.bufferDays;
+  document.getElementById('dailyCap').value=state.settings.dailyCap;
+  document.getElementById('protectToday').checked=state.settings.protectToday;
+}
+function renderOverrides(){
+  const el=document.getElementById('ovList'); el.innerHTML='';
+  const keys=Object.keys(state.settings.overrides).sort();
+  if(keys.length===0){ el.innerHTML='<span class="muted">上書きはありません</span>'; return; }
+  keys.forEach(k=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--line);font-size:.85rem';
+    row.innerHTML=`<span>${fmtJP(k)} → ${state.settings.overrides[k]}h</span>`;
+    const b=document.createElement('button'); b.className='btn ghost tiny'; b.textContent='削除';
+    b.onclick=()=>{ delete state.settings.overrides[k]; save(); renderOverrides(); render(); };
+    row.appendChild(b); el.appendChild(row);
+  });
+}
+
+function renderKPI(active,sched){
+  const totalH=active.reduce((s,a)=>s+(Number(a.hours)||0),0);
+  let capInWindow=0;
+  (sched.days||[]).forEach(d=>capInWindow+=capacityOf(d));
+  const over=active.filter(a=>a._short>0.001).length;
+  document.getElementById('kpi').innerHTML=`
+    <div><b>${active.length}</b><span>進行中の課題</span></div>
+    <div><b>${round(totalH)}h</b><span>必要な総作業</span></div>
+    <div><b>${round(capInWindow)}h</b><span>締切までに使える時間</span></div>
+    <div><b style="color:${over? 'var(--danger)':'var(--ok)'}">${over}</b><span>間に合わない課題</span></div>`;
+  const warn=document.getElementById('warnBox');
+  const shorts=active.filter(a=>a._short>0.001);
+  if(shorts.length){
+    warn.innerHTML=`<div class="note" style="border-color:var(--danger);background:#fdf6f6">
+      ⚠️ <b>今のままだと間に合わない課題があります。</b><br>`+
+      shorts.map(a=>`・${esc(a.name)}:あと <b>${round(a._short)}h</b> 足りません`).join('<br>')+
+      `<br><span class="muted">→ 作業時間を増やす / 重要度を下げて削る / 見積もりを見直す、を検討しましょう。</span></div>`;
+  } else if(active.length){
+    warn.innerHTML=`<div class="note" style="border-color:var(--ok);background:#f3fbf5">✅ 今のペースなら、予備日を残して全課題が間に合う計算です。</div>`;
+  } else { warn.innerHTML=''; }
+  // ロケットスタートの前倒し不足を別枠で通知
+  const dashWarn=active.filter(a=>a._short<=0.001 && !a._dashFeasible);
+  if(dashWarn.length){
+    warn.innerHTML+=`<div class="note" style="border-color:var(--warn);background:#fffaf0;margin-top:8px">
+      🚀 <b>前倒し(ロケットスタート)が間に合いにくい課題:</b><br>`+
+      dashWarn.map(a=>`・${esc(a.name)}(${fmtJP(a._dash.dashDeadline)}までに8割は難しい)`).join('<br>')+
+      `<br><span class="muted">→ 今日〜明日から着手量を増やすか、見積もりを見直しましょう。</span></div>`;
+  }
+}
+
+function renderTable(active,vital){
+  const tb=document.querySelector('#assignTable tbody'); tb.innerHTML='';
+  if(active.length===0){ tb.innerHTML='<tr><td colspan="7" class="empty">課題を追加してください。</td></tr>'; return; }
+  active.forEach(a=>{
+    const eff=a._eff, daysLeft=diffDays(todayStr(),eff);
+    const h=Number(a.hours)||0, core=round(h*0.8), finish=round(h-core);
+    const d=a._dash, dashTgt=round(Math.min(d.dashTarget,d.dashCap));
+    // 状況
+    let st,cls;
+    if(a._short>0.001){ st='間に合わない'; cls='danger'; }
+    else if(daysLeft<0){ st='締切超過'; cls='danger'; }
+    else if(!a._dashFeasible){ st='前倒し不足'; cls='tight'; }
+    else if(!a._dashOK){ st='ダッシュ遅れ'; cls='tight'; }
+    else { st='順調'; cls='ok'; }
+
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><b>${esc(a.name)}</b><br>
+        ${vital.has(a.id)?'<span class="pill vital">最重要(重要な2割)</span> ':''}
+        <span class="muted">重要度${a.imp}・提出 ${fmtJP(a.date)} ${a.time||''}</span></td>
+      <td>${fmtJP(eff)}<br><span class="muted">${daysLeft>=0?'あと'+daysLeft+'日':(-daysLeft)+'日超過'}</span></td>
+      <td>${round(h)}h</td>
+      <td>${fmtJP(d.dashDeadline)}まで<br><span class="muted">${dashTgt}h(8割)を前倒し</span>${a._dashFeasible?'':'<br><span style="color:var(--warn)">余地不足:今すぐ着手</span>'}</td>
+      <td style="min-width:150px">
+        <div class="muted">🚀核心 ${core}h ／ 🎨仕上げ ${finish}h</div>
+        <div class="bar"><div class="core" style="width:${h?core/h*100:0}%"></div><div class="finish" style="width:${h?finish/h*100:0}%"></div></div>
+      </td>
+      <td><span class="pill ${cls}">${st}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn sec tiny" onclick="markDone('${a.id}')">完了</button>
+        <button class="btn ghost tiny" onclick="del('${a.id}')">削除</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function renderSchedule(sched,vital){
+  const el=document.getElementById('schedule'); el.innerHTML='';
+  if(!sched.days||sched.days.length===0){ el.innerHTML='<div class="empty">課題を追加するとスケジュールが表示されます。</div>'; return; }
+  // 今日(保護日)を先頭に表示
+  if(state.settings.protectToday){
+    el.innerHTML+=`<div class="daycard today">
+      <div class="dayhead"><span>${fmtJP(todayStr())} 今日</span><span class="muted">マニャーナ:保護日</span></div>
+      <div class="empty">今日は「既に決めていた予定」を片付ける日。新しい課題は明日から着手します。</div></div>`;
+  }
+  sched.days.forEach((d,i)=>{
+    const items=sched.alloc[d];
+    const used=items.reduce((s,o)=>s+o.hours,0);
+    const cap=capacityOf(d);
+    const over=used>cap+0.001;
+    let cls='daycard';
+    if(d===addDays(todayStr(),1)) cls+=' tomorrow';
+    if(over) cls+=' over';
+    let html=`<div class="${cls}"><div class="dayhead">
+        <span>${fmtJP(d)}${d===addDays(todayStr(),1)?' 明日':''}</span>
+        <span class="muted">${round(used)}h / ${round(cap)}h</span></div>`;
+    if(items.length===0){
+      html+= cap>0 ? '<div class="empty">予定なし(自由 / 予備)</div>' : '<div class="empty">作業時間 0h</div>';
+    } else {
+      items.forEach(o=>{
+        const ph = o.phase==='core' ? '🚀' : '🎨';
+        html+=`<div class="task-line"><span>${vital.has(o.id)?'⭐':''}${ph} ${esc(o.name)}</span><b>${round(o.hours)}h</b></div>`;
+      });
+    }
+    html+='</div>';
+    el.innerHTML+=html;
+  });
+}
+
+function renderTomorrow(sched,vital){
+  const card=document.getElementById('tomorrowCard');
+  const el=document.getElementById('tomorrowList');
+  const tm=addDays(todayStr(),1);
+  const target = state.settings.protectToday ? tm : todayStr();
+  const items=(sched.alloc&&sched.alloc[target])?sched.alloc[target]:[];
+  if(items.length===0){
+    el.innerHTML='<div class="empty">割り当てられた作業はありません。今日入力した課題は、保存すると反映されます。</div>';
+    return;
+  }
+  const total=items.reduce((s,o)=>s+o.hours,0);
+  el.innerHTML = `<p class="muted" style="margin-top:0">${fmtJP(target)}・合計 <b>${round(total)}h</b> — 序盤に全力(ロケットスタート)</p>`+
+    items.map(o=>{
+      const isCore=o.phase==='core';
+      const note=isCore
+        ? `🚀 スタートダッシュ:核心(評価を左右する2割)に全力で集中`
+        : `🎨 仕上げ・見直し(流し期間)`;
+      return `<div class="daycard" style="margin-bottom:6px">
+        <div class="dayhead"><span>${vital.has(o.id)?'⭐ ':''}${esc(o.name)}</span><b>${round(o.hours)}h</b></div>
+        <div class="muted">${note}</div></div>`;
+    }).join('');
+}
+
+/* ============ 操作 ============ */
+function saveSettings(){
+  document.querySelectorAll('#weeklyHours input').forEach(inp=>{
+    state.settings.weeklyHours[+inp.dataset.dow]=Number(inp.value)||0;
+  });
+  state.settings.bufferDays=Number(document.getElementById('bufferDays').value)||0;
+  state.settings.dailyCap=Number(document.getElementById('dailyCap').value)||8;
+  state.settings.protectToday=document.getElementById('protectToday').checked;
+  save(); render();
+  flash('設定を保存しました');
+}
+function addOverride(){
+  const d=document.getElementById('ovDate').value;
+  const h=document.getElementById('ovHours').value;
+  if(!d){ alert('日付を入力してください'); return; }
+  state.settings.overrides[d]=Number(h)||0;
+  save(); renderOverrides(); render();
+}
+function applyScale(){
+  const v=document.getElementById('aScale').value;
+  if(v) document.getElementById('aHours').value=v;
+}
+function addAssignment(){
+  const name=document.getElementById('aName').value.trim();
+  const date=document.getElementById('aDate').value;
+  const time=document.getElementById('aTime').value;
+  const imp=Number(document.getElementById('aImp').value);
+  const hours=Number(document.getElementById('aHours').value);
+  if(!name){ alert('課題名を入力してください'); return; }
+  if(!date){ alert('提出日を入力してください'); return; }
+  if(!hours||hours<=0){ alert('見積もり作業時間を入力(または規模を選択)してください'); return; }
+  if(date < todayStr()){ if(!confirm('提出日が過去です。このまま追加しますか?')) return; }
+  state.assignments.push({
+    id:'a'+Date.now()+Math.random().toString(36).slice(2,6),
+    name,date,time,imp,hours,assigned:todayStr(),done:false
+  });
+  save();
+  document.getElementById('aName').value='';
+  document.getElementById('aHours').value='';
+  document.getElementById('aScale').value='';
+  render();
+  flash('課題を追加しました');
+}
+function markDone(id){ const a=state.assignments.find(x=>x.id===id); if(a){a.done=true; save(); render();} }
+function del(id){ if(!confirm('この課題を削除しますか?')) return;
+  state.assignments=state.assignments.filter(x=>x.id!==id); save(); render(); }
+
+/* バックアップ */
+function exportData(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='kadai-scheduler-backup.json'; a.click(); URL.revokeObjectURL(url);
+}
+function importData(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const s=JSON.parse(r.result); if(s.settings&&s.assignments){ state=s; save(); render(); flash('読み込みました'); } else alert('形式が違います'); }catch(e){ alert('読み込めませんでした'); } };
+  r.readAsText(f);
+}
+
+/* 小物 */
+function round(n){ return Math.round(n*10)/10; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function flash(msg){
+  const d=document.createElement('div');
+  d.textContent=msg;
+  d.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 18px;border-radius:999px;font-size:.85rem;z-index:99;box-shadow:var(--shadow)';
+  document.body.appendChild(d); setTimeout(()=>d.remove(),1800);
+}
+
+/* 初期化 */
+document.getElementById('aDate').value=addDays(todayStr(),7);
+document.getElementById('ovDate').value=todayStr();
+render();
+</script>
+</body>
+</html>
